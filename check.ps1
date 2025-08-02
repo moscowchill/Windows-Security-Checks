@@ -1,158 +1,443 @@
-# Security Checks PowerShell Script
-
-# Check 1 - Windows Defender Status
-$defenderStatus = Get-MpComputerStatus
-if ($defenderStatus.AntivirusEnabled) {
-    Write-Host "Windows Defender is enabled and running." -ForegroundColor Green
-} else {
-    Write-Host "Windows Defender is not enabled or not running." -ForegroundColor Red
+# Admin check
+if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Administrator privileges are required for this script. Please run the script as an Administrator." -ForegroundColor Red
+    Read-Host "Press Enter to exit..."
+    exit
 }
 
-# Check 2 - Firewall Status
-$firewallStatus = Get-NetFirewallProfile | Select-Object Name,Enabled
-if ($firewallStatus.Enabled) {
-    Write-Host "Windows Firewall is enabled and running." -ForegroundColor Green
-} else {
-    Write-Host "Windows Firewall is not enabled or not running." -ForegroundColor Red
+# --- Function Definitions ---
+
+function Get-DefenderStatus {
+    try {
+        $defenderStatus = Get-MpComputerStatus -ErrorAction Stop
+        if ($defenderStatus.AntivirusEnabled) {
+            return [PSCustomObject]@{
+                CheckName = 'Windows Defender'
+                Status    = 'Good'
+                Message   = 'Windows Defender is enabled and running.'
+            }
+        } else {
+            return [PSCustomObject]@{
+                CheckName = 'Windows Defender'
+                Status    = 'Bad'
+                Message   = 'Windows Defender is not enabled or not running.'
+            }
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'Windows Defender'
+            Status    = 'Error'
+            Message   = "Could not retrieve Windows Defender status. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-# Check 3 - User Account Control (UAC) Status
-$uacStatus = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System').ConsentPromptBehaviorAdmin
-switch ($uacStatus) {
-    0 {Write-Host "UAC is disabled." -ForegroundColor Red}
-    2 {Write-Host "UAC is set to prompt for consent on the secure desktop." -ForegroundColor Green}
-    5 {Write-Host "UAC is set to prompt for consent." -ForegroundColor Green}
-    default {Write-Host "Unknown UAC status." -ForegroundColor Yellow}
+function Get-FirewallStatus {
+    try {
+        $firewallProfiles = Get-NetFirewallProfile | Select-Object Name, Enabled
+        $messages = @()
+        $allEnabled = $true
+        foreach ($profile in $firewallProfiles) {
+            if ($profile.Enabled) {
+                $messages += "  - $($profile.Name) Firewall: Enabled"
+            } else {
+                $messages += "  - $($profile.Name) Firewall: Disabled"
+                $allEnabled = $false
+            }
+        }
+
+        $status = if ($allEnabled) { 'Good' } else { 'Bad' }
+        return [PSCustomObject]@{
+            CheckName = 'Firewall'
+            Status    = $status
+            Message   = "Windows Firewall Status:`n" + ($messages -join "`n")
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'Firewall'
+            Status    = 'Error'
+            Message   = "Could not retrieve Firewall status. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-# Check 4 - Automatic Updates Status
-$automaticUpdatesStatus = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update').AUOptions
-switch ($automaticUpdatesStatus) {
-    1 {Write-Host "Automatic updates are disabled." -ForegroundColor Red}
-    2 {Write-Host "Automatic updates are set to notify for download and notify for install." -ForegroundColor Green}
-    3 {Write-Host "Automatic updates are set to download and notify for install." -ForegroundColor Green}
-    4 {Write-Host "Automatic updates are set to automatic download and scheduled installation." -ForegroundColor Green}
-    default {Write-Host "Unknown automatic updates status." -ForegroundColor Yellow}
+function Get-UACStatus {
+    try {
+        $uacValue = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'ConsentPromptBehaviorAdmin' -ErrorAction Stop).ConsentPromptBehaviorAdmin
+        switch ($uacValue) {
+            2 {
+                $message = "UAC is set to 'Prompt for consent on the secure desktop'."
+                $status = 'Good'
+            }
+            5 {
+                $message = "UAC is set to 'Prompt for consent'."
+                $status = 'Good'
+            }
+            0 {
+                $message = "UAC is disabled."
+                $status = 'Bad'
+            }
+            default {
+                $message = "UAC has an unknown or non-standard setting (Value: $uacValue)."
+                $status = 'Warning'
+            }
+        }
+        return [PSCustomObject]@{
+            CheckName = 'User Account Control (UAC)'
+            Status    = $status
+            Message   = $message
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'User Account Control (UAC)'
+            Status    = 'Error'
+            Message   = "Could not retrieve UAC status. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-# Check 5 - BitLocker Status
-$bitlockerStatus = Get-BitLockerVolume | Select-Object -ExpandProperty VolumeStatus
-if ($bitlockerStatus -eq 'FullyEncrypted') {
-    Write-Host "BitLocker is enabled and the system drive is fully encrypted." -ForegroundColor Green
-} else {
-    Write-Host "BitLocker is not enabled or the system drive is not fully encrypted." -ForegroundColor Red
+function Get-AutomaticUpdatesStatus {
+    try {
+        $auValue = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update' -Name 'AUOptions' -ErrorAction Stop).AUOptions
+        switch ($auValue) {
+            4 {
+                $message = 'Automatic updates are set to download and install automatically.'
+                $status = 'Good'
+            }
+            3 {
+                $message = 'Automatic updates are set to download and notify for install.'
+                $status = 'Good'
+            }
+            2 {
+                $message = 'Automatic updates are set to notify for download and notify for install.'
+                $status = 'Good'
+            }
+            1 {
+                $message = 'Automatic updates are disabled.'
+                $status = 'Bad'
+            }
+            default {
+                $message = "Unknown automatic updates status (Value: $auValue)."
+                $status = 'Warning'
+            }
+        }
+         return [PSCustomObject]@{
+            CheckName = 'Automatic Updates'
+            Status    = $status
+            Message   = $message
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'Automatic Updates'
+            Status    = 'Error'
+            Message   = "Could not retrieve Automatic Updates status. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-# Check 6 - Guest Account Status
-$guestAccountStatus = Get-WmiObject -Class Win32_UserAccount -Filter "Name='Guest'"
-if ($guestAccountStatus.Disabled) {
-    Write-Host "The Guest account is disabled." -ForegroundColor Green
-} else {
-    Write-Host "The Guest account is enabled." -ForegroundColor Red
+function Get-BitLockerStatus {
+    try {
+        $systemDrive = $env:SystemDrive
+        $bitlockerVolume = Get-BitLockerVolume -MountPoint $systemDrive -ErrorAction Stop
+
+        if ($bitlockerVolume.VolumeStatus -eq 'FullyEncrypted') {
+            return [PSCustomObject]@{
+                CheckName = 'BitLocker'
+                Status    = 'Good'
+                Message   = "BitLocker is enabled and the system drive ($systemDrive) is fully encrypted."
+            }
+        } else {
+            return [PSCustomObject]@{
+                CheckName = 'BitLocker'
+                Status    = 'Bad'
+                Message   = "BitLocker is not fully encrypted on the system drive ($systemDrive). Status: $($bitlockerVolume.VolumeStatus)"
+            }
+        }
+    } catch {
+        # Catch errors, including when no BitLocker volume is found for the system drive
+        return [PSCustomObject]@{
+            CheckName = 'BitLocker'
+            Status    = 'Bad'
+            Message   = "BitLocker is not enabled or the system drive ($($env:SystemDrive)) is not encrypted. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-# Check 7 - Network Sharing Status
-$networkSharingStatus = Get-NetAdapterBinding | Where-Object {$_.ComponentID -eq 'ms_server'}
-if ($networkSharingStatus.Enabled) {
-    Write-Host "Network sharing is enabled." -ForegroundColor Red
-} else {
-    Write-Host "Network sharing is disabled." -ForegroundColor Green
+function Get-GuestAccountStatus {
+    try {
+        $guestAccount = Get-WmiObject -Class Win32_UserAccount -Filter "Name='Guest'" -ErrorAction Stop
+        if ($guestAccount.Disabled) {
+            return [PSCustomObject]@{
+                CheckName = 'Guest Account'
+                Status    = 'Good'
+                Message   = 'The Guest account is disabled.'
+            }
+        } else {
+            return [PSCustomObject]@{
+                CheckName = 'Guest Account'
+                Status    = 'Bad'
+                Message   = 'The Guest account is enabled.'
+            }
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'Guest Account'
+            Status    = 'Error'
+            Message   = "Could not retrieve Guest Account status. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-# Check 8 - PowerShell Execution Policy
-$executionPolicy = Get-ExecutionPolicy
-if ($executionPolicy -eq 'RemoteSigned' -or $executionPolicy -eq 'AllSigned') {
-    Write-Host "PowerShell execution policy is set to $executionPolicy." -ForegroundColor Green
-} else {
-    Write-Host "PowerShell execution policy is set to $executionPolicy, which is not secure." -ForegroundColor Red
+function Get-NetworkSharingStatus {
+    try {
+        $bindings = Get-NetAdapterBinding | Where-Object { $_.ComponentID -eq 'ms_server' -and $_.Enabled }
+        if ($bindings) {
+            $adapters = ($bindings | ForEach-Object { $_.DisplayName }) -join ', '
+            return [PSCustomObject]@{
+                CheckName = 'Network Sharing'
+                Status    = 'Bad'
+                Message   = "Network sharing (File and Printer Sharing) is enabled on the following adapters: $adapters"
+            }
+        } else {
+            return [PSCustomObject]@{
+                CheckName = 'Network Sharing'
+                Status    = 'Good'
+                Message   = 'Network sharing (File and Printer Sharing) is disabled on all network adapters.'
+            }
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'Network Sharing'
+            Status    = 'Error'
+            Message   = "Could not retrieve Network Sharing status. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-# Check 9 - Secure Boot Status
-$secureBootStatus = Confirm-SecureBootUEFI
-if ($secureBootStatus) {
-Write-Host "Secure Boot is enabled." -ForegroundColor Green
-} else {
-Write-Host "Secure Boot is not enabled or not supported." -ForegroundColor Red
+function Get-ExecutionPolicyStatus {
+    try {
+        $policy = Get-ExecutionPolicy
+        if ($policy -in @('Restricted', 'AllSigned', 'RemoteSigned')) {
+            return [PSCustomObject]@{
+                CheckName = 'PowerShell Execution Policy'
+                Status    = 'Good'
+                Message   = "PowerShell execution policy is set to '$policy'."
+            }
+        } else {
+            return [PSCustomObject]@{
+                CheckName = 'PowerShell Execution Policy'
+                Status    = 'Bad'
+                Message   = "PowerShell execution policy is set to '$policy', which is not secure."
+            }
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'PowerShell Execution Policy'
+            Status    = 'Error'
+            Message   = "Could not retrieve PowerShell Execution Policy. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-# Check 10 - SMBv1 Status
-$smb1Status = Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol
-if ($smb1Status.State -eq 'Disabled') {
-Write-Host "SMBv1 is disabled." -ForegroundColor Green
-} else {
-Write-Host "SMBv1 is enabled." -ForegroundColor Red
+function Get-SecureBootStatus {
+    try {
+        $isSecureBoot = Confirm-SecureBootUEFI
+        if ($isSecureBoot) {
+            return [PSCustomObject]@{
+                CheckName = 'Secure Boot'
+                Status    = 'Good'
+                Message   = 'Secure Boot is enabled.'
+            }
+        } else {
+            return [PSCustomObject]@{
+                CheckName = 'Secure Boot'
+                Status    = 'Bad'
+                Message   = 'Secure Boot is disabled or not supported.'
+            }
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'Secure Boot'
+            Status    = 'Warning' # Changed to Warning as it can throw on non-UEFI systems
+            Message   = "Could not determine Secure Boot status. It may not be supported on this system. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-#Check 11 - RDP Status
-$rdpStatus = Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections'
-if ($rdpStatus.fDenyTSConnections -eq 1) {
-Write-Host "Remote Desktop is disabled." -ForegroundColor Green
-} else {
-Write-Host "Remote Desktop is enabled." -ForegroundColor Red
+function Get-SMBv1Status {
+    try {
+        $smb1Feature = Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -ErrorAction Stop
+        if ($smb1Feature.State -eq 'Disabled') {
+            return [PSCustomObject]@{
+                CheckName = 'SMBv1'
+                Status    = 'Good'
+                Message   = 'SMBv1 is disabled.'
+            }
+        } else {
+            return [PSCustomObject]@{
+                CheckName = 'SMBv1'
+                Status    = 'Bad'
+                Message   = "SMBv1 is enabled (State: $($smb1Feature.State))."
+            }
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'SMBv1'
+            Status    = 'Error'
+            Message   = "Could not retrieve SMBv1 status. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-# Check 12 - Local Administrator Password Solution (LAPS) Status
-try {
-$lapsStatus = Get-AdmPwdPassword -ComputerName $env:COMPUTERNAME -ErrorAction Stop
-Write-Host "LAPS is configured and active." -ForegroundColor Green
-} catch {
-Write-Host "LAPS is not configured or not active." -ForegroundColor Red
+function Get-RDPStatus {
+    try {
+        $rdpValue = (Get-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -ErrorAction Stop).fDenyTSConnections
+        if ($rdpValue -eq 1) {
+            return [PSCustomObject]@{
+                CheckName = 'Remote Desktop (RDP)'
+                Status    = 'Good'
+                Message   = 'Remote Desktop is disabled.'
+            }
+        } else {
+            return [PSCustomObject]@{
+                CheckName = 'Remote Desktop (RDP)'
+                Status    = 'Bad'
+                Message   = 'Remote Desktop is enabled.'
+            }
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'Remote Desktop (RDP)'
+            Status    = 'Error'
+            Message   = "Could not retrieve RDP status. Error: $($_.Exception.Message)"
+        }
+    }
 }
 
-# Check 13 - Audit Policy
-$auditPolicy = AuditPol.exe /get /category:*
-if ($auditPolicy -match 'Success and Failure') {
-Write-Host "Audit policy is configured for Success and Failure events." -ForegroundColor Green
-} else {
-Write-Host "Audit policy is not optimally configured." -ForegroundColor Red
+function Get-LAPSStatus {
+    if (Get-Module -ListAvailable -Name AdmPwd.PS) {
+        try {
+            $lapsPass = Get-AdmPwdPassword -ComputerName $env:COMPUTERNAME -ErrorAction Stop
+            if ($lapsPass) {
+                return [PSCustomObject]@{
+                    CheckName = 'LAPS'
+                    Status    = 'Good'
+                    Message   = 'LAPS is configured and a password is set.'
+                }
+            } else {
+                # This case might be rare, but good to have
+                return [PSCustomObject]@{
+                    CheckName = 'LAPS'
+                    Status    = 'Warning'
+                    Message   = 'LAPS is installed, but no password was retrieved.'
+                }
+            }
+        } catch {
+            return [PSCustomObject]@{
+                CheckName = 'LAPS'
+                Status    = 'Bad'
+                Message   = 'LAPS is installed, but is not configured correctly on this machine.'
+            }
+        }
+    } else {
+        return [PSCustomObject]@{
+            CheckName = 'LAPS'
+            Status    = 'Warning'
+            Message   = 'LAPS PowerShell module (AdmPwd.PS) is not installed.'
+        }
+    }
 }
 
-# Output security report
-$outputFile = "SecurityReport_$(Get-Date -Format yyyyMMdd).txt"
+function Get-AuditPolicyStatus {
+    try {
+        $auditPolicy = auditpol.exe /get /category:"Logon/Logoff"
+        # Check if both Success and Failure are audited for Logon/Logoff
+        if ($auditPolicy -match 'Success and Failure') {
+            return [PSCustomObject]@{
+                CheckName = 'Audit Policy (Logon/Logoff)'
+                Status    = 'Good'
+                Message   = 'Audit policy for Logon/Logoff is configured for "Success and Failure".'
+            }
+        } elseif ($auditPolicy -match 'Success' -or $auditPolicy -match 'Failure') {
+            return [PSCustomObject]@{
+                CheckName = 'Audit Policy (Logon/Logoff)'
+                Status    = 'Warning'
+                Message   = 'Audit policy for Logon/Logoff is not configured for both Success and Failure.'
+            }
+        } else {
+            return [PSCustomObject]@{
+                CheckName = 'Audit Policy (Logon/Logoff)'
+                Status    = 'Bad'
+                Message   = 'Audit policy for Logon/Logoff is not configured.'
+            }
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'Audit Policy (Logon/Logoff)'
+            Status    = 'Error'
+            Message   = "Could not retrieve Audit Policy status. Error: $($_.Exception.Message)"
+        }
+    }
+}
+
+
+# --- Main Script ---
+
+Write-Host "Running Windows Security Checks..." -ForegroundColor Cyan
+
+$results = @()
+$results += Get-DefenderStatus
+$results += Get-FirewallStatus
+$results += Get-UACStatus
+$results += Get-AutomaticUpdatesStatus
+$results += Get-BitLockerStatus
+$results += Get-GuestAccountStatus
+$results += Get-NetworkSharingStatus
+$results += Get-ExecutionPolicyStatus
+$results += Get-SecureBootStatus
+$results += Get-SMBv1Status
+$results += Get-RDPStatus
+$results += Get-LAPSStatus
+$results += Get-AuditPolicyStatus
+
+# --- Console Output ---
+
+Write-Host "`n--- Security Check Results ---`n" -ForegroundColor Cyan
+
+foreach ($result in $results) {
+    $statusColor = switch ($result.Status) {
+        'Good'    { 'Green' }
+        'Bad'     { 'Red' }
+        'Warning' { 'Yellow' }
+        'Error'   { 'Magenta' }
+    }
+    Write-Host "[$($result.Status.ToUpper())]" -ForegroundColor $statusColor -NoNewline
+    Write-Host " $($result.CheckName): $($result.Message)"
+}
+
+# --- Report Generation ---
+
 $reportContent = @"
 Security Report - $(Get-Date -Format "yyyy/MM/dd HH:mm")
+=======================================
 
-Check 1: Windows Defender Status
-$defenderStatus
-
-Check 2: Firewall Status
-$firewallStatus
-
-Check 3: User Account Control (UAC) Status
-$uacStatus
-
-Check 4: Automatic Updates Status
-$automaticUpdatesStatus
-
-Check 5: BitLocker Status
-$bitlockerStatus
-
-Check 6: Guest Account Status
-$guestAccountStatus
-
-Check 7: Network Sharing Status
-$networkSharingStatus
-
-Check 8: PowerShell Execution Policy
-$executionPolicy
-
-Check 9: Secure Boot Status
-$secureBootStatus
-
-Check 10: SMBv1 Status
-$smb1Status
-
-Check 11: RDP Status
-$rdpStatus
-
-Check 12: Local Administrator Password Solution (LAPS) Status
-$lapsStatus
-
-Check 13: Audit Policy
-$auditPolicy
 "@
 
-Set-Content -Path $outputFile -Value $reportContent
-Write-Host "Security report saved to $outputFile" -ForegroundColor Green
+foreach ($result in $results) {
+    $reportContent += @"
+Check:  $($result.CheckName)
+Status: $($result.Status)
+Info:   $($result.Message)
+---------------------------------------
+"@
+}
+
+$outputFile = "SecurityReport_$(Get-Date -Format yyyyMMdd_HHmmss).txt"
+try {
+    Set-Content -Path $outputFile -Value $reportContent -ErrorAction Stop
+    Write-Host "`nSecurity report saved to '$outputFile'" -ForegroundColor Green
+} catch {
+    Write-Host "`nFailed to save security report to '$outputFile'. Error: $($_.Exception.Message)" -ForegroundColor Red
+}
 
 Read-Host "Press Enter to exit..."
