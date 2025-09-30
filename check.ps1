@@ -635,30 +635,34 @@ function Get-DefenderExclusionsStatus {
     try {
         $mpPref = Get-MpPreference -ErrorAction Stop
 
-        $exclusionTypes = @()
+        $exclusionDetails = @()
         $totalExclusions = 0
 
         # Check path exclusions
         if ($mpPref.ExclusionPath -and $mpPref.ExclusionPath.Count -gt 0) {
-            $exclusionTypes += "$($mpPref.ExclusionPath.Count) path(s)"
+            $paths = $mpPref.ExclusionPath -join ', '
+            $exclusionDetails += "Paths ($($mpPref.ExclusionPath.Count)): $paths"
             $totalExclusions += $mpPref.ExclusionPath.Count
         }
 
         # Check extension exclusions
         if ($mpPref.ExclusionExtension -and $mpPref.ExclusionExtension.Count -gt 0) {
-            $exclusionTypes += "$($mpPref.ExclusionExtension.Count) extension(s)"
+            $extensions = $mpPref.ExclusionExtension -join ', '
+            $exclusionDetails += "Extensions ($($mpPref.ExclusionExtension.Count)): $extensions"
             $totalExclusions += $mpPref.ExclusionExtension.Count
         }
 
         # Check process exclusions
         if ($mpPref.ExclusionProcess -and $mpPref.ExclusionProcess.Count -gt 0) {
-            $exclusionTypes += "$($mpPref.ExclusionProcess.Count) process(es)"
+            $processes = $mpPref.ExclusionProcess -join ', '
+            $exclusionDetails += "Processes ($($mpPref.ExclusionProcess.Count)): $processes"
             $totalExclusions += $mpPref.ExclusionProcess.Count
         }
 
         # Check IP address exclusions
         if ($mpPref.ExclusionIpAddress -and $mpPref.ExclusionIpAddress.Count -gt 0) {
-            $exclusionTypes += "$($mpPref.ExclusionIpAddress.Count) IP address(es)"
+            $ips = $mpPref.ExclusionIpAddress -join ', '
+            $exclusionDetails += "IP Addresses ($($mpPref.ExclusionIpAddress.Count)): $ips"
             $totalExclusions += $mpPref.ExclusionIpAddress.Count
         }
 
@@ -672,13 +676,13 @@ function Get-DefenderExclusionsStatus {
             return [PSCustomObject]@{
                 CheckName = 'Windows Defender Exclusions'
                 Status    = 'Warning'
-                Message   = "$totalExclusions exclusion(s) configured: " + ($exclusionTypes -join ', ') + '. Review exclusions to ensure they are necessary.'
+                Message   = "$totalExclusions exclusion(s) configured. " + ($exclusionDetails -join ' | ') + '. Review to ensure necessary.'
             }
         } else {
             return [PSCustomObject]@{
                 CheckName = 'Windows Defender Exclusions'
                 Status    = 'Bad'
-                Message   = "$totalExclusions exclusion(s) configured: " + ($exclusionTypes -join ', ') + '. Excessive exclusions reduce protection. Review and minimize.'
+                Message   = "$totalExclusions exclusion(s) configured. " + ($exclusionDetails -join ' | ') + '. Excessive exclusions reduce protection.'
             }
         }
     } catch {
