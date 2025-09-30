@@ -1,6 +1,8 @@
 # Windows-Security-Checks
 
 A comprehensive PowerShell script that performs modern security checks on Windows 10/11 systems. Updated for 2023-2024 security features including VBS, Credential Guard, TPM 2.0, Attack Surface Reduction, and enhanced Windows Defender protections.
+<img width="1963" height="816" alt="image" src="https://github.com/user-attachments/assets/25d0751a-9705-4dfa-90dc-867cc3f36459" />
+
 
 ## Security Checks Performed
 
