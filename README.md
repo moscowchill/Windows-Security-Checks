@@ -45,11 +45,36 @@ Created by Joe Shenouda (www.shenouda.nl)
 
 ## Usage
 
-1. Save the script as a PowerShell file (e.g. check.ps1).
-2. Open PowerShell as an administrator.
-3. Navigate to the directory where the script is saved.
-4. Run the script using the command `PowerShell.exe -ExecutionPolicy Bypass -File "C:\path\to\check.ps1"`.
-5. Follow the prompts.
+### Running as Administrator (Recommended)
+
+For complete security assessment with all checks:
+
+1. Open PowerShell **as Administrator**
+2. Navigate to the directory where the script is saved
+3. Run the script:
+   ```powershell
+   PowerShell.exe -ExecutionPolicy Bypass -File "C:\path\to\check.ps1"
+   ```
+4. Review the generated security report
+
+### Running as Standard User (VDI/Workstations)
+
+The script now supports **non-administrator execution** for environments where users don't have local admin rights (VDI, locked-down workstations):
+
+1. Open PowerShell (no admin rights required)
+2. Navigate to the directory where the script is saved
+3. Run the script:
+   ```powershell
+   PowerShell.exe -ExecutionPolicy Bypass -File "C:\path\to\check.ps1"
+   ```
+
+**Note:** When running as a standard user:
+- Most checks will still work (Defender status, VBS, Credential Guard, TPM, Secure Boot, UAC, RDP, etc.)
+- Some checks require admin privileges and will show a warning message:
+  - BitLocker encryption status
+  - SMB Signing & Encryption configuration
+  - Network adapter settings (may vary)
+- The script will clearly indicate which checks were skipped due to insufficient privileges
 
 ## Support
 

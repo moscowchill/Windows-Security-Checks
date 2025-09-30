@@ -1,13 +1,28 @@
-# Admin check
-if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "Administrator privileges are required for this script. Please run the script as an Administrator." -ForegroundColor Red
-    Read-Host "Press Enter to exit..."
-    exit
+# Admin check - now allows non-admin execution with warnings
+$script:IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-NOT $script:IsAdmin) {
+    Write-Host "WARNING: Running without Administrator privileges. Some checks will be skipped or may return limited information." -ForegroundColor Yellow
+    Write-Host "For complete security assessment, run as Administrator.`n" -ForegroundColor Yellow
 }
 
 # --- Function Definitions ---
 
+function Test-RequiresAdmin {
+    param([string]$CheckName)
+
+    if (-NOT $script:IsAdmin) {
+        return [PSCustomObject]@{
+            CheckName = $CheckName
+            Status    = 'Warning'
+            Message   = 'This check requires Administrator privileges. Run as Administrator for full results.'
+        }
+    }
+    return $null
+}
+
 function Get-FirewallStatus {
+    # Firewall check can work for non-admin users
     try {
         $firewallProfiles = Get-NetFirewallProfile | Select-Object Name, Enabled
         $messages = @()
@@ -148,6 +163,10 @@ function Get-WindowsUpdateStatus {
 }
 
 function Get-BitLockerStatus {
+    # BitLocker requires admin to query
+    $adminCheck = Test-RequiresAdmin -CheckName 'BitLocker'
+    if ($adminCheck) { return $adminCheck }
+
     try {
         $systemDrive = $env:SystemDrive
         $bitlockerVolume = Get-BitLockerVolume -MountPoint $systemDrive -ErrorAction Stop
@@ -201,6 +220,7 @@ function Get-GuestAccountStatus {
 }
 
 function Get-NetworkSharingStatus {
+    # Network adapter bindings may require admin
     try {
         $bindings = Get-NetAdapterBinding | Where-Object { $_.ComponentID -eq 'ms_server' -and $_.Enabled }
         if ($bindings) {
@@ -218,6 +238,14 @@ function Get-NetworkSharingStatus {
             }
         }
     } catch {
+        # May fail for non-admin, return warning instead of error
+        if (-NOT $script:IsAdmin) {
+            return [PSCustomObject]@{
+                CheckName = 'Network Sharing'
+                Status    = 'Warning'
+                Message   = 'Could not retrieve Network Sharing status. Administrator privileges may be required.'
+            }
+        }
         return [PSCustomObject]@{
             CheckName = 'Network Sharing'
             Status    = 'Error'
@@ -277,6 +305,10 @@ function Get-SecureBootStatus {
 }
 
 function Get-SMBv1Status {
+    # SMBv1 check requires admin
+    $adminCheck = Test-RequiresAdmin -CheckName 'SMBv1'
+    if ($adminCheck) { return $adminCheck }
+
     try {
         $smb1Feature = Get-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -ErrorAction Stop
         if ($smb1Feature.State -eq 'Disabled') {
@@ -302,6 +334,10 @@ function Get-SMBv1Status {
 }
 
 function Get-AuditPolicyStatus {
+    # Audit policy requires admin
+    $adminCheck = Test-RequiresAdmin -CheckName 'Audit Policy (Logon/Logoff)'
+    if ($adminCheck) { return $adminCheck }
+
     try {
         $auditPolicy = auditpol.exe /get /category:"Logon/Logoff"
         # Check if both Success and Failure are audited for Logon/Logoff
@@ -635,6 +671,15 @@ function Get-DefenderExclusionsStatus {
     try {
         $mpPref = Get-MpPreference -ErrorAction Stop
 
+        # Check if running as non-admin (Get-MpPreference returns "N/A: Must be an administrator" strings)
+        if ($mpPref.ExclusionPath -and $mpPref.ExclusionPath[0] -like "*Must be an administrator*") {
+            return [PSCustomObject]@{
+                CheckName = 'Windows Defender Exclusions'
+                Status    = 'Warning'
+                Message   = 'Cannot view exclusions. Administrator privileges required to view detailed exclusion list.'
+            }
+        }
+
         $exclusionDetails = @()
         $totalExclusions = 0
 
@@ -847,6 +892,10 @@ function Get-EnhancedRDPStatus {
 }
 
 function Get-SMBSigningStatus {
+    # SMB config requires admin
+    $adminCheck = Test-RequiresAdmin -CheckName 'SMB Signing & Encryption'
+    if ($adminCheck) { return $adminCheck }
+
     try {
         $clientConfig = Get-SmbClientConfiguration -ErrorAction Stop
         $serverConfig = Get-SmbServerConfiguration -ErrorAction Stop
