@@ -1,6 +1,42 @@
 # Windows-Security-Checks
 
-This PowerShell script performs security checks on a Windows system, checking for Windows Defender status, firewall status, user account control (UAC) settings, automatic updates, BitLocker status, guest account status, network sharing, PowerShell execution policy, Secure Boot, SMBv1, RDP, Local Administrator Password Solution (LAPS), and audit policy. The script generates a report with the results and outputs it to a text file. This tool can be used to quickly check the security posture of a Windows system and identify any potential issues that need to be addressed. Use at your own risk.
+A comprehensive PowerShell script that performs modern security checks on Windows 10/11 systems. Updated for 2023-2024 security features including VBS, Credential Guard, TPM 2.0, Attack Surface Reduction, and enhanced Windows Defender protections.
+
+## Security Checks Performed
+
+### Core Windows 11 Security (2023-2024)
+- **Virtualization-Based Security (VBS)** - Checks VBS and Memory Integrity (HVCI) status
+- **Credential Guard** - Verifies credential theft protection
+- **TPM 2.0** - Validates TPM presence, version, and readiness
+- **Secure Boot** - Confirms UEFI Secure Boot status
+
+### Windows Defender - Enhanced Checks
+- **Enhanced Defender Status** - Real-time protection, cloud protection, network protection, tamper protection, PUA protection, and signature age
+- **Attack Surface Reduction (ASR) Rules** - Checks configured ASR rules that prevent Office exploits and script-based attacks
+- **Controlled Folder Access** - Anti-ransomware protection for user folders
+
+### Traditional Security Checks (Updated)
+- **Firewall** - All profile statuses
+- **User Account Control (UAC)** - Prompt configuration
+- **Windows Update** - Service status, pending updates, and last update time
+- **BitLocker** - Drive encryption status
+
+### Authentication & Access Control
+- **Windows Hello for Business** - Modern authentication configuration
+- **Guest Account** - Disabled/enabled status
+- **Windows LAPS** - Modern built-in LAPS and legacy LAPS detection
+
+### Network Security
+- **Remote Desktop (RDP)** - Status, NLA, SSL/TLS encryption, port configuration
+- **SMBv1** - Deprecated protocol status
+- **SMB Signing & Encryption** - Client/server signing requirements and encryption
+- **Network Sharing** - File and printer sharing status
+
+### System Configuration
+- **PowerShell Execution Policy** - Script execution restrictions
+- **Audit Policy** - Logon/Logoff auditing configuration
+
+The script generates a comprehensive report with color-coded results and outputs it to a text file. This tool can be used to quickly assess the security posture of Windows systems, especially for VDI environments, and identify potential security gaps.
 
 Created by Joe Shenouda (www.shenouda.nl)
 
