@@ -631,6 +631,65 @@ function Get-EnhancedDefenderStatus {
     }
 }
 
+function Get-DefenderExclusionsStatus {
+    try {
+        $mpPref = Get-MpPreference -ErrorAction Stop
+
+        $exclusionTypes = @()
+        $totalExclusions = 0
+
+        # Check path exclusions
+        if ($mpPref.ExclusionPath -and $mpPref.ExclusionPath.Count -gt 0) {
+            $exclusionTypes += "$($mpPref.ExclusionPath.Count) path(s)"
+            $totalExclusions += $mpPref.ExclusionPath.Count
+        }
+
+        # Check extension exclusions
+        if ($mpPref.ExclusionExtension -and $mpPref.ExclusionExtension.Count -gt 0) {
+            $exclusionTypes += "$($mpPref.ExclusionExtension.Count) extension(s)"
+            $totalExclusions += $mpPref.ExclusionExtension.Count
+        }
+
+        # Check process exclusions
+        if ($mpPref.ExclusionProcess -and $mpPref.ExclusionProcess.Count -gt 0) {
+            $exclusionTypes += "$($mpPref.ExclusionProcess.Count) process(es)"
+            $totalExclusions += $mpPref.ExclusionProcess.Count
+        }
+
+        # Check IP address exclusions
+        if ($mpPref.ExclusionIpAddress -and $mpPref.ExclusionIpAddress.Count -gt 0) {
+            $exclusionTypes += "$($mpPref.ExclusionIpAddress.Count) IP address(es)"
+            $totalExclusions += $mpPref.ExclusionIpAddress.Count
+        }
+
+        if ($totalExclusions -eq 0) {
+            return [PSCustomObject]@{
+                CheckName = 'Windows Defender Exclusions'
+                Status    = 'Good'
+                Message   = 'No exclusions configured. All files and processes are scanned.'
+            }
+        } elseif ($totalExclusions -le 5) {
+            return [PSCustomObject]@{
+                CheckName = 'Windows Defender Exclusions'
+                Status    = 'Warning'
+                Message   = "$totalExclusions exclusion(s) configured: " + ($exclusionTypes -join ', ') + '. Review exclusions to ensure they are necessary.'
+            }
+        } else {
+            return [PSCustomObject]@{
+                CheckName = 'Windows Defender Exclusions'
+                Status    = 'Bad'
+                Message   = "$totalExclusions exclusion(s) configured: " + ($exclusionTypes -join ', ') + '. Excessive exclusions reduce protection. Review and minimize.'
+            }
+        }
+    } catch {
+        return [PSCustomObject]@{
+            CheckName = 'Windows Defender Exclusions'
+            Status    = 'Error'
+            Message   = "Could not retrieve Windows Defender exclusions. Error: $($_.Exception.Message)"
+        }
+    }
+}
+
 function Get-WindowsHelloStatus {
     try {
         # Check for Windows Hello PIN or biometrics
@@ -855,6 +914,7 @@ $results += Get-SecureBootStatus
 $results += Get-EnhancedDefenderStatus
 $results += Get-ASRStatus
 $results += Get-ControlledFolderAccessStatus
+$results += Get-DefenderExclusionsStatus
 
 # Traditional Security Checks (Updated)
 $results += Get-FirewallStatus

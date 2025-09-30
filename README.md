@@ -16,6 +16,7 @@ A comprehensive PowerShell script that performs modern security checks on Window
 - **Enhanced Defender Status** - Real-time protection, cloud protection, network protection, tamper protection, PUA protection, and signature age
 - **Attack Surface Reduction (ASR) Rules** - Checks configured ASR rules that prevent Office exploits and script-based attacks
 - **Controlled Folder Access** - Anti-ransomware protection for user folders
+- **Defender Exclusions** - Lists and counts path, extension, process, and IP exclusions (security risk if excessive)
 
 ### Traditional Security Checks (Updated)
 - **Firewall** - All profile statuses
