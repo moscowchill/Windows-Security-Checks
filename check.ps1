@@ -281,25 +281,53 @@ function Get-ExecutionPolicyStatus {
 
 function Get-SecureBootStatus {
     try {
-        $isSecureBoot = Confirm-SecureBootUEFI
-        if ($isSecureBoot) {
-            return [PSCustomObject]@{
-                CheckName = 'Secure Boot'
-                Status    = 'Good'
-                Message   = 'Secure Boot is enabled.'
+        # Try Confirm-SecureBootUEFI first (requires admin on some systems)
+        try {
+            $isSecureBoot = Confirm-SecureBootUEFI -ErrorAction Stop
+            if ($isSecureBoot) {
+                return [PSCustomObject]@{
+                    CheckName = 'Secure Boot'
+                    Status    = 'Good'
+                    Message   = 'Secure Boot is enabled.'
+                }
+            } else {
+                return [PSCustomObject]@{
+                    CheckName = 'Secure Boot'
+                    Status    = 'Bad'
+                    Message   = 'Secure Boot is disabled.'
+                }
             }
-        } else {
-            return [PSCustomObject]@{
-                CheckName = 'Secure Boot'
-                Status    = 'Bad'
-                Message   = 'Secure Boot is disabled or not supported.'
+        } catch {
+            # Fallback to registry check for non-admin users
+            try {
+                $secureBootEnabled = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SecureBoot\State' -Name 'UEFISecureBootEnabled' -ErrorAction Stop).UEFISecureBootEnabled
+                if ($secureBootEnabled -eq 1) {
+                    return [PSCustomObject]@{
+                        CheckName = 'Secure Boot'
+                        Status    = 'Good'
+                        Message   = 'Secure Boot is enabled.'
+                    }
+                } else {
+                    return [PSCustomObject]@{
+                        CheckName = 'Secure Boot'
+                        Status    = 'Bad'
+                        Message   = 'Secure Boot is disabled.'
+                    }
+                }
+            } catch {
+                # System might be BIOS/Legacy mode, not UEFI
+                return [PSCustomObject]@{
+                    CheckName = 'Secure Boot'
+                    Status    = 'Warning'
+                    Message   = 'Could not determine Secure Boot status. System may not support UEFI Secure Boot (Legacy BIOS mode).'
+                }
             }
         }
     } catch {
         return [PSCustomObject]@{
             CheckName = 'Secure Boot'
-            Status    = 'Warning' # Changed to Warning as it can throw on non-UEFI systems
-            Message   = "Could not determine Secure Boot status. It may not be supported on this system. Error: $($_.Exception.Message)"
+            Status    = 'Warning'
+            Message   = "Could not determine Secure Boot status. Error: $($_.Exception.Message)"
         }
     }
 }
@@ -458,12 +486,38 @@ function Get-CredentialGuardStatus {
 
 function Get-TPMStatus {
     try {
-        $tpm = Get-Tpm -ErrorAction Stop
-
         $messages = @()
         $status = 'Good'
+        $tpmPresent = $false
+        $tpmReady = $false
+        $tpmEnabled = $false
 
-        if (-not $tpm.TpmPresent) {
+        # Try Get-Tpm first (works for both admin and some non-admin scenarios)
+        try {
+            $tpm = Get-Tpm -ErrorAction Stop
+            $tpmPresent = $tpm.TpmPresent
+            $tpmReady = $tpm.TpmReady
+            $tpmEnabled = $tpm.TpmEnabled
+        } catch {
+            # Fallback to WMI for non-admin users
+            try {
+                $tpmWmi = Get-WmiObject -Namespace "Root\CIMv2\Security\MicrosoftTpm" -Class Win32_Tpm -ErrorAction Stop
+                if ($tpmWmi) {
+                    $tpmPresent = $tpmWmi.IsEnabled_InitialValue -or $tpmWmi.IsActivated_InitialValue
+                    $tpmReady = $tpmWmi.IsEnabled_InitialValue
+                    $tpmEnabled = $tpmWmi.IsEnabled_InitialValue
+                }
+            } catch {
+                # If both methods fail, return error
+                return [PSCustomObject]@{
+                    CheckName = 'TPM 2.0'
+                    Status    = 'Warning'
+                    Message   = "Could not retrieve TPM status. This may require Administrator privileges or TPM may not be present."
+                }
+            }
+        }
+
+        if (-not $tpmPresent) {
             return [PSCustomObject]@{
                 CheckName = 'TPM 2.0'
                 Status    = 'Bad'
@@ -471,19 +525,19 @@ function Get-TPMStatus {
             }
         }
 
-        if (-not $tpm.TpmReady) {
+        if (-not $tpmReady) {
             $messages += "TPM is present but not ready"
             $status = 'Warning'
         } else {
             $messages += "TPM is present and ready"
         }
 
-        if (-not $tpm.TpmEnabled) {
+        if (-not $tpmEnabled) {
             $messages += "TPM is not enabled"
             $status = 'Bad'
         }
 
-        # Check TPM version via WMI
+        # Check TPM version via WMI (works for non-admin)
         try {
             $tpmVersion = (Get-WmiObject -Namespace "Root\CIMv2\Security\MicrosoftTpm" -Class Win32_Tpm -ErrorAction Stop).SpecVersion
             if ($tpmVersion -like "2.*") {
@@ -506,7 +560,7 @@ function Get-TPMStatus {
     } catch {
         return [PSCustomObject]@{
             CheckName = 'TPM 2.0'
-            Status    = 'Bad'
+            Status    = 'Error'
             Message   = "Could not retrieve TPM status. Error: $($_.Exception.Message)"
         }
     }
