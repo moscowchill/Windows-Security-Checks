@@ -485,39 +485,17 @@ function Get-CredentialGuardStatus {
 }
 
 function Get-TPMStatus {
+    # TPM check requires admin on most systems
+    $adminCheck = Test-RequiresAdmin -CheckName 'TPM 2.0'
+    if ($adminCheck) { return $adminCheck }
+
     try {
+        $tpm = Get-Tpm -ErrorAction Stop
+
         $messages = @()
         $status = 'Good'
-        $tpmPresent = $false
-        $tpmReady = $false
-        $tpmEnabled = $false
 
-        # Try Get-Tpm first (works for both admin and some non-admin scenarios)
-        try {
-            $tpm = Get-Tpm -ErrorAction Stop
-            $tpmPresent = $tpm.TpmPresent
-            $tpmReady = $tpm.TpmReady
-            $tpmEnabled = $tpm.TpmEnabled
-        } catch {
-            # Fallback to WMI for non-admin users
-            try {
-                $tpmWmi = Get-WmiObject -Namespace "Root\CIMv2\Security\MicrosoftTpm" -Class Win32_Tpm -ErrorAction Stop
-                if ($tpmWmi) {
-                    $tpmPresent = $tpmWmi.IsEnabled_InitialValue -or $tpmWmi.IsActivated_InitialValue
-                    $tpmReady = $tpmWmi.IsEnabled_InitialValue
-                    $tpmEnabled = $tpmWmi.IsEnabled_InitialValue
-                }
-            } catch {
-                # If both methods fail, return error
-                return [PSCustomObject]@{
-                    CheckName = 'TPM 2.0'
-                    Status    = 'Warning'
-                    Message   = "Could not retrieve TPM status. This may require Administrator privileges or TPM may not be present."
-                }
-            }
-        }
-
-        if (-not $tpmPresent) {
+        if (-not $tpm.TpmPresent) {
             return [PSCustomObject]@{
                 CheckName = 'TPM 2.0'
                 Status    = 'Bad'
@@ -525,19 +503,19 @@ function Get-TPMStatus {
             }
         }
 
-        if (-not $tpmReady) {
+        if (-not $tpm.TpmReady) {
             $messages += "TPM is present but not ready"
             $status = 'Warning'
         } else {
             $messages += "TPM is present and ready"
         }
 
-        if (-not $tpmEnabled) {
+        if (-not $tpm.TpmEnabled) {
             $messages += "TPM is not enabled"
             $status = 'Bad'
         }
 
-        # Check TPM version via WMI (works for non-admin)
+        # Check TPM version via WMI
         try {
             $tpmVersion = (Get-WmiObject -Namespace "Root\CIMv2\Security\MicrosoftTpm" -Class Win32_Tpm -ErrorAction Stop).SpecVersion
             if ($tpmVersion -like "2.*") {

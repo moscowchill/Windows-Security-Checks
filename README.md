@@ -71,15 +71,15 @@ The script now supports **non-administrator execution** for environments where u
 **Note:** When running as a standard user:
 - Most checks will still work (Defender status, VBS, Credential Guard, Secure Boot, UAC, RDP, etc.)
 - Some checks require admin privileges and will show a warning message:
-  - BitLocker encryption status
-  - SMB Signing & Encryption configuration
-  - SMBv1 status
-  - Audit Policy configuration
-  - Defender Exclusions (detailed list)
-  - TPM status (may show limited info or warning)
-  - Network adapter settings (may vary)
+  - **TPM 2.0 status** - Hardware security module queries require elevation
+  - **BitLocker encryption status** - Drive encryption queries require elevation
+  - **SMBv1 status** - Optional features query requires elevation
+  - **SMB Signing & Encryption** - SMB configuration requires elevation
+  - **Audit Policy configuration** - Security audit settings require elevation
+  - **Defender Exclusions** - Detailed exclusion list requires elevation
+  - **Network adapter settings** - May vary by system configuration
 - The script will clearly indicate which checks were skipped due to insufficient privileges
-- Secure Boot uses registry fallback for non-admin users (should work in most cases)
+- **Secure Boot** uses registry fallback and works for non-admin users
 
 ## Support
 
