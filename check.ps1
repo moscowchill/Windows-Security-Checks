@@ -581,10 +581,12 @@ function Get-EnhancedDefenderStatus {
         # Tamper Protection (check via registry as it's not in MpPreference)
         try {
             $tamperProtection = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Features' -Name 'TamperProtection' -ErrorAction SilentlyContinue).TamperProtection
-            if ($tamperProtection -eq 5) {
+            if ($tamperProtection -eq 5 -or $tamperProtection -eq 1) {
                 $messages += "Tamper protection: Enabled"
+            } elseif ($tamperProtection -eq 0) {
+                $issues += "Tamper protection is disabled"
             } else {
-                $issues += "Tamper protection is not enabled"
+                $messages += "Tamper protection: Status unknown (value: $tamperProtection)"
             }
         } catch {
             $messages += "Tamper protection: Status unknown"
